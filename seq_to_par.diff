@@ -1,0 +1,52 @@
+--- mandelbrot_seq.c	2026-09-30 14:55:32.228350450 +0000
++++ mandelbrot_par.c	2026-09-30 14:55:32.228802417 +0000
+@@ -5,6 +5,7 @@
+ #include <stdlib.h>
+ #include <math.h>
+ #include <time.h>
++#include <omp.h>
+ 
+ #define MAX_ITER 5000
+ 
+@@ -55,6 +56,7 @@
+     double scale = v->span / w;
+     double x0 = v->cx - 0.5 * v->span;
+     double y0 = v->cy + 0.5 * scale * h;
++    #pragma omp parallel for schedule(runtime)
+     for (int py = 0; py < h; py++) {
+         double ci = y0 - py * scale;
+         for (int px = 0; px < w; px++) {
+@@ -75,7 +77,7 @@
+ 
+ int main(int argc, char **argv) {
+     int w, h, view;
+-    const char *out = "mandelbrot_seq.png";
++    const char *out = "mandelbrot_par.png";
+ 
+     if (argc >= 4) {
+         w = atoi(argv[1]);
+@@ -96,6 +98,8 @@
+         return 1;
+     }
+ 
++    if (!getenv("OMP_SCHEDULE")) omp_set_schedule(omp_sched_dynamic, 1);
++
+     const View *v = &VIEWS[view - 1];
+     unsigned char *img = malloc((size_t)w * h * 3);
+     if (!img) {
+@@ -109,7 +113,14 @@
+     stbi_write_png(out, w, h, 3, img, w * 3);
+     double t2 = now_sec();
+ 
+-    printf("Sequential | %s | %dx%d | %d iter\n", v->name, w, h, MAX_ITER);
++    omp_sched_t kind;
++    int chunk;
++    omp_get_schedule(&kind, &chunk);
++    const char *kinds[] = {"?", "static", "dynamic", "guided", "auto"};
++    int k = (int)kind & 0x7fffffff;
++    printf("OpenMP | %d threads | schedule %s,%d | %s | %dx%d | %d iter\n",
++           omp_get_max_threads(), (k >= 1 && k <= 4) ? kinds[k] : "?", chunk,
++           v->name, w, h, MAX_ITER);
+     printf("Compute: %.2f ms\nPNG write: %.2f ms\nTotal: %.2f ms\nOutput: %s\n",
+            (t1 - t0) * 1e3, (t2 - t1) * 1e3, (t2 - t0) * 1e3, out);
+ 
